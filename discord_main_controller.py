@@ -2,7 +2,13 @@ import discord
 import os
 import asyncio
 import subprocess
+import logging
 from dotenv import load_dotenv
+
+# 🔇 Discord.py 로깅 레벨 조정 (경고 숨김)
+logging.getLogger('discord').setLevel(logging.ERROR)
+logging.getLogger('discord.client').setLevel(logging.ERROR)
+logging.getLogger('discord.gateway').setLevel(logging.ERROR)
 
 # 환경 변수 로드
 load_dotenv()
@@ -98,10 +104,12 @@ def load_all_secrets():
     print("✅ 모든 시크릿 로딩 완료")
     return True, loaded_secrets
 
-# 봇 설정
+# 봇 설정 - 🔇 로깅 레벨 조정
 intents = discord.Intents.default()
 intents.message_content = True
-client = discord.Client(intents=intents)
+
+# Discord 클라이언트 생성시 로깅 비활성화
+client = discord.Client(intents=intents, enable_debug_events=False)
 
 class DiscordWorkflowManager:
     def __init__(self):
@@ -520,8 +528,11 @@ if __name__ == "__main__":
         exit(1)
     
     print("🔌 Discord 봇 연결 중...")
+    
+    # 🔇 Discord.py 내부 경고 메시지 억제
     try:
-        client.run(DISCORD_TOKEN)
+        # 경고 메시지를 숨기고 봇 실행
+        client.run(DISCORD_TOKEN, log_handler=None)
     except Exception as e:
         print(f"❌ 봇 실행 실패: {e}")
         exit(1)
