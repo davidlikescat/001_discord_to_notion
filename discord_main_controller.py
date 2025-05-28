@@ -1,6 +1,7 @@
 import discord
 import os
 import asyncio
+import subprocess
 from dotenv import load_dotenv
 
 # 환경 변수 로드
@@ -12,6 +13,90 @@ from discord_sub_2 import YouTubeInfoExtractor
 from discord_sub_3 import SubtitleExtractor  # ✅ 실제 클래스명
 from discord_sub_4 import GeminiSummarizer    # ✅ 실제 클래스명  
 from discord_sub_5 import NotionSaver         # ✅ 실제 클래스명
+
+def get_secret_from_gcp(secret_name, project_id="n8n-ai-work-agent-automation"):
+    """
+    GCP Secret Manager에서 비밀값 가져오기
+    로컬 .env 파일이 없거나 실패할 경우 GCP에서 직접 읽기
+    """
+    try:
+        # 먼저 환경변수에서 시도
+        env_value = os.getenv(secret_name.upper())
+        if env_value:
+            print(f"✅ {secret_name}: 환경변수에서 읽기 성공")
+            return env_value
+        
+        # 환경변수가 없으면 GCP Secret Manager에서 읽기
+        print(f"🔍 {secret_name}: GCP Secret Manager에서 읽는 중...")
+        
+        # Secret Manager에서 비밀값 가져오기
+        secret_mapping = {
+            'DISCORD_BOT_TOKEN': 'discord-bot-token',
+            'YOUTUBE_API_KEY': 'youtube-api-key',
+            'GEMINI_API_KEY': 'gemini-api-key',
+            'NOTION_API_KEY': 'notion-api-key',
+            'NOTION_DATABASE_ID': 'notion-database-id'
+        }
+        
+        gcp_secret_name = secret_mapping.get(secret_name.upper())
+        if not gcp_secret_name:
+            print(f"❌ {secret_name}: 매핑되지 않은 시크릿")
+            return None
+        
+        # gcloud 명령어로 시크릿 읽기
+        result = subprocess.run([
+            'gcloud', 'secrets', 'versions', 'access', 'latest',
+            f'--secret={gcp_secret_name}',
+            f'--project={project_id}'
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0:
+            secret_value = result.stdout.strip()
+            if secret_value:
+                print(f"✅ {secret_name}: GCP Secret Manager에서 읽기 성공")
+                # 환경변수로도 설정 (이후 사용을 위해)
+                os.environ[secret_name.upper()] = secret_value
+                return secret_value
+        
+        print(f"❌ {secret_name}: GCP Secret Manager 읽기 실패")
+        print(f"   gcloud 오류: {result.stderr}")
+        return None
+        
+    except subprocess.TimeoutExpired:
+        print(f"❌ {secret_name}: GCP 읽기 시간초과")
+        return None
+    except Exception as e:
+        print(f"❌ {secret_name}: GCP 읽기 오류 - {e}")
+        return None
+
+def load_all_secrets():
+    """모든 필요한 시크릿을 로드"""
+    print("🔐 API 키 로딩 중...")
+    
+    secrets = [
+        'DISCORD_BOT_TOKEN',
+        'YOUTUBE_API_KEY', 
+        'GEMINI_API_KEY',
+        'NOTION_API_KEY',
+        'NOTION_DATABASE_ID'
+    ]
+    
+    loaded_secrets = {}
+    failed_secrets = []
+    
+    for secret in secrets:
+        value = get_secret_from_gcp(secret)
+        if value:
+            loaded_secrets[secret] = value
+        else:
+            failed_secrets.append(secret)
+    
+    if failed_secrets:
+        print(f"⚠️ 로딩 실패한 시크릿: {', '.join(failed_secrets)}")
+        return False, loaded_secrets
+    
+    print("✅ 모든 시크릿 로딩 완료")
+    return True, loaded_secrets
 
 # 봇 설정
 intents = discord.Intents.default()
@@ -399,7 +484,7 @@ async def on_message(message):
             pass
 
 def check_environment():
-    """환경 변수 확인"""
+    """환경 변수 확인 - GCP Secret Manager 통합"""
     print("🔍 환경 변수 확인:")
     
     required_vars = [
@@ -410,18 +495,10 @@ def check_environment():
         'NOTION_DATABASE_ID'
     ]
     
-    missing_vars = []
-    for var in required_vars:
-        value = os.getenv(var)
-        if value:
-            print(f"   ✅ {var}: 설정됨")
-        else:
-            print(f"   ❌ {var}: 없음")
-            missing_vars.append(var)
+    success, loaded_secrets = load_all_secrets()
     
-    if missing_vars:
-        print(f"\n⚠️ 누락된 환경 변수: {', '.join(missing_vars)}")
-        print("💡 .env 파일을 확인해주세요.")
+    if not success:
+        print("⚠️ 일부 환경 변수가 누락되었습니다.")
         return False
     
     print("✅ 모든 환경 변수가 설정되었습니다.")
@@ -436,10 +513,10 @@ if __name__ == "__main__":
         print("❌ 환경 설정을 완료한 후 다시 실행해주세요.")
         exit(1)
     
-    # Discord 토큰 확인
-    DISCORD_TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+    # Discord 토큰 확인 (GCP에서 읽기)
+    DISCORD_TOKEN = get_secret_from_gcp('DISCORD_BOT_TOKEN')
     if not DISCORD_TOKEN:
-        print("❌ DISCORD_BOT_TOKEN이 설정되지 않았습니다.")
+        print("❌ DISCORD_BOT_TOKEN을 가져올 수 없습니다.")
         exit(1)
     
     print("🔌 Discord 봇 연결 중...")
