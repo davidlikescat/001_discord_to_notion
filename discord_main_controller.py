@@ -144,75 +144,74 @@ class DiscordWorkflowManager:
         print(f"   GeminiSummarizer: {'✅' if self.summarizer.model else '❌ Gemini 모델 없음'}")
         print(f"   NotionSaver: {'✅' if self.notion_saver.api_key and self.notion_saver.database_id else '❌ Notion 설정 없음'}")
     
-async def process_youtube_workflow(self, message, video_id):
-    """유튜브 영상 처리 워크플로우 실행"""
-    
-    # 🔥 중복 처리 방지
-    if video_id in self.processing_videos:
-        print(f"⏸️ 이미 처리 중인 영상: {video_id}")
-        return False
-    
-    # 처리 중 목록에 추가
-    self.processing_videos.add(video_id)
-    
-    processing_msg = None
-    
-    try:
-        # Step 1: 초기 메시지
-        processing_msg = await message.channel.send(
-            f"🎬 영상을 분석 중입니다... `{video_id}`"
-        )
+    async def process_youtube_workflow(self, message, video_id):
+        """유튜브 영상 처리 워크플로우 실행"""
         
-        # Step 2: 영상 정보 추출
-        await processing_msg.edit(content="📊 영상 정보를 수집하고 있습니다...")
-        video_info = await self.run_step_2(video_id, processing_msg)
-        if not video_info:
+        # 🔥 중복 처리 방지
+        if video_id in self.processing_videos:
+            print(f"⏸️ 이미 처리 중인 영상: {video_id}")
             return False
         
-        # Step 3: 자막 추출 ✅ 수정된 메서드 호출
-        await processing_msg.edit(content="📝 자막을 추출하고 있습니다...")
-        transcript, transcript_source = await self.run_step_3(video_id, video_info, processing_msg)
+        # 처리 중 목록에 추가
+        self.processing_videos.add(video_id)
         
-        # 자막 추출 실패 시 처리
-        if not transcript:
-            # 영상 설명을 대체 자막으로 시도
-            description = video_info.get('description', '')
-            if description and len(description) > 100:  # 최소 길이 확인
-                print("ℹ️ 자막 대신 영상 설명 사용")
-                transcript = description
-                transcript_source = "description"
-            else:
-                await processing_msg.edit(content="❌ 자막 추출에 실패했습니다. 영상 설명도 충분하지 않습니다.")
+        processing_msg = None
+        
+        try:
+            # Step 1: 초기 메시지
+            processing_msg = await message.channel.send(
+                f"🎬 영상을 분석 중입니다... `{video_id}`"
+            )
+            
+            # Step 2: 영상 정보 추출
+            await processing_msg.edit(content="📊 영상 정보를 수집하고 있습니다...")
+            video_info = await self.run_step_2(video_id, processing_msg)
+            if not video_info:
                 return False
-        
-        # Step 4: AI 요약
-        await processing_msg.edit(content="🤖 AI가 영상을 요약하고 있습니다...")
-        summary = await self.run_step_4(video_info, transcript, transcript_source, processing_msg)
-        if not summary:
+            
+            # Step 3: 자막 추출 ✅ 수정된 메서드 호출
+            await processing_msg.edit(content="📝 자막을 추출하고 있습니다...")
+            transcript, transcript_source = await self.run_step_3(video_id, video_info, processing_msg)
+            
+            # 자막 추출 실패 시 처리
+            if not transcript:
+                # 영상 설명을 대체 자막으로 시도
+                description = video_info.get('description', '')
+                if description and len(description) > 100:  # 최소 길이 확인
+                    print("ℹ️ 자막 대신 영상 설명 사용")
+                    transcript = description
+                    transcript_source = "description"
+                else:
+                    await processing_msg.edit(content="❌ 자막 추출에 실패했습니다. 영상 설명도 충분하지 않습니다.")
+                    return False
+            
+            # Step 4: AI 요약
+            await processing_msg.edit(content="🤖 AI가 영상을 요약하고 있습니다...")
+            summary = await self.run_step_4(video_info, transcript, transcript_source, processing_msg)
+            if not summary:
+                return False
+            
+            # Step 5: 노션 저장
+            await processing_msg.edit(content="💾 노션에 저장하고 있습니다...")
+            notion_url = await self.run_step_5(video_info, summary, video_id, message, transcript_source, processing_msg)
+            if not notion_url:
+                return False
+            
+            # Step 6: 완료 메시지
+            await self.send_completion_message(processing_msg, video_info, notion_url, transcript_source)
+            return True
+            
+        except Exception as e:
+            error_msg = f"❌ 워크플로우 실행 중 오류 발생: {str(e)}"
+            print(error_msg)
+            if processing_msg:
+                await processing_msg.edit(content=error_msg)
             return False
         
-        # Step 5: 노션 저장
-        await processing_msg.edit(content="💾 노션에 저장하고 있습니다...")
-        notion_url = await self.run_step_5(video_info, summary, video_id, message, transcript_source, processing_msg)
-        if not notion_url:
-            return False
-        
-        # Step 6: 완료 메시지
-        await self.send_completion_message(processing_msg, video_info, notion_url, transcript_source)
-        return True
-        
-    except Exception as e:
-        error_msg = f"❌ 워크플로우 실행 중 오류 발생: {str(e)}"
-        print(error_msg)
-        if processing_msg:
-            await processing_msg.edit(content=error_msg)
-        return False
-    
-    finally:
-        # 🔥 처리 완료 후 목록에서 제거
-        self.processing_videos.discard(video_id)
-        print(f"🏁 워크플로우 정리 완료: {video_id}")
-
+        finally:
+            # 🔥 처리 완료 후 목록에서 제거
+            self.processing_videos.discard(video_id)
+            print(f"🏁 워크플로우 정리 완료: {video_id}")
     
     async def run_step_2(self, video_id, processing_msg):
         """Step 2: 영상 정보 추출"""
@@ -233,53 +232,53 @@ async def process_youtube_workflow(self, message, video_id):
             await processing_msg.edit(content="❌ 영상 정보 추출 중 오류가 발생했습니다.")
             return None
     
-async def run_step_3(self, video_id, video_info, processing_msg):
-    """Step 3: 자막 추출 - ✅ SubtitleExtractor 메서드에 맞춤"""
-    try:
-        # video_id로부터 유튜브 URL 생성
-        youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-        
-        # ✅ SubtitleExtractor의 실제 메서드 사용
-        transcript = await asyncio.to_thread(
-            self.subtitle_extractor.extract_subtitle_text, 
-            youtube_url
-        )
-        
-        # 자막 내용 확인
-        if transcript and len(transcript) > 100:  # 최소 100자 이상 있는지 확인
-            # 자막 소스 가져오기 (SubtitleExtractor 인스턴스에서)
-            source = getattr(self.subtitle_extractor, 'subtitle_source', 'yt_dlp_auto_ko')
+    async def run_step_3(self, video_id, video_info, processing_msg):
+        """Step 3: 자막 추출 - ✅ SubtitleExtractor 메서드에 맞춤"""
+        try:
+            # video_id로부터 유튜브 URL 생성
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
             
-            print(f"✅ Step 3 성공: {len(transcript)} 글자")
-            return transcript, source
-        else:
-            # 자막 길이가 너무 짧은 경우
-            if transcript:
-                print(f"⚠️ Step 3 경고: 자막이 너무 짧습니다 ({len(transcript)} 글자)")
-            else:
-                print("❌ Step 3 실패: 자막 추출 불가")
+            # ✅ SubtitleExtractor의 실제 메서드 사용
+            transcript = await asyncio.to_thread(
+                self.subtitle_extractor.extract_subtitle_text, 
+                youtube_url
+            )
+            
+            # 자막 내용 확인
+            if transcript and len(transcript) > 100:  # 최소 100자 이상 있는지 확인
+                # 자막 소스 가져오기 (SubtitleExtractor 인스턴스에서)
+                source = getattr(self.subtitle_extractor, 'subtitle_source', 'yt_dlp_auto_ko')
                 
-            await processing_msg.edit(content="⚠️ 자막이 없거나 너무 짧습니다. 영상 설명을 확인 중...")
+                print(f"✅ Step 3 성공: {len(transcript)} 글자")
+                return transcript, source
+            else:
+                # 자막 길이가 너무 짧은 경우
+                if transcript:
+                    print(f"⚠️ Step 3 경고: 자막이 너무 짧습니다 ({len(transcript)} 글자)")
+                else:
+                    print("❌ Step 3 실패: 자막 추출 불가")
+                    
+                await processing_msg.edit(content="⚠️ 자막이 없거나 너무 짧습니다. 영상 설명을 확인 중...")
+                
+                # 영상 설명 확인
+                description = video_info.get('description', '')
+                if description and len(description) > 100:
+                    print(f"ℹ️ 영상 설명 사용: {len(description)} 글자")
+                    return description, "description"
+                
+                # 그래도 없으면 실패
+                await processing_msg.edit(content="❌ 자막을 추출할 수 없습니다.")
+                return None, None
+                
+        except Exception as e:
+            error_msg = f"❌ Step 3 오류: {str(e)}"
+            print(error_msg)
+            # 스택 트레이스 출력
+            import traceback
+            traceback.print_exc()
             
-            # 영상 설명 확인
-            description = video_info.get('description', '')
-            if description and len(description) > 100:
-                print(f"ℹ️ 영상 설명 사용: {len(description)} 글자")
-                return description, "description"
-            
-            # 그래도 없으면 실패
-            await processing_msg.edit(content="❌ 자막을 추출할 수 없습니다.")
+            await processing_msg.edit(content="❌ 자막 추출 중 오류가 발생했습니다.")
             return None, None
-            
-    except Exception as e:
-        error_msg = f"❌ Step 3 오류: {str(e)}"
-        print(error_msg)
-        # 스택 트레이스 출력
-        import traceback
-        traceback.print_exc()
-        
-        await processing_msg.edit(content="❌ 자막 추출 중 오류가 발생했습니다.")
-        return None, None
     
     async def run_step_4(self, video_info, transcript, transcript_source, processing_msg):
         """Step 4: AI 요약"""
