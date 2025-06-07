@@ -1,7 +1,7 @@
 import os
 import tempfile
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import yt_dlp
 from io import StringIO
 
@@ -47,19 +47,40 @@ class SubtitleExtractor:
                 # 한국어 우선, 영어 대안으로 자막 선택
                 subtitle_data = None
                 language_used = None
+                self.subtitle_source = ""
                 
-                for lang in ['ko', 'en']:
-                    if lang in subtitles:
-                        subtitle_data = subtitles[lang]
-                        language_used = f"{lang} (수동)"
-                        break
-                    elif lang in automatic_captions:
-                        subtitle_data = automatic_captions[lang]
-                        language_used = f"{lang} (자동)"
-                        break
+                # 1. 먼저 수동 자막 확인 (한국어 우선)
+                if 'ko' in subtitles:
+                    subtitle_data = subtitles['ko']
+                    language_used = "ko (수동)"
+                    self.subtitle_source = "yt_dlp_manual_ko"
+                elif 'en' in subtitles:
+                    subtitle_data = subtitles['en']
+                    language_used = "en (수동)"
+                    self.subtitle_source = "yt_dlp_manual_en"
+                
+                # 2. 수동 자막이 없으면 자동 자막 확인
+                elif 'ko' in automatic_captions:
+                    subtitle_data = automatic_captions['ko']
+                    language_used = "ko (자동)"
+                    self.subtitle_source = "yt_dlp_auto_ko"
+                elif 'en' in automatic_captions:
+                    subtitle_data = automatic_captions['en']
+                    language_used = "en (자동)"
+                    self.subtitle_source = "yt_dlp_auto_en"
+                elif 'ko-orig' in automatic_captions:  # 추가: 원본 한국어 자막 확인
+                    subtitle_data = automatic_captions['ko-orig']
+                    language_used = "ko-orig (자동)"
+                    self.subtitle_source = "yt_dlp_auto_ko"
                 
                 if not subtitle_data:
-                    print("❌ 한국어/영어 자막을 찾을 수 없습니다.")
+                    print("❌ 한국어/영어 자막을 찾을 수 없습니다. 영상 설명으로 대체합니다.")
+                    # 영상 설명으로 대체
+                    description = info.get('description', '')
+                    if description and len(description) > 100:  # 최소 길이 확인
+                        self.subtitle_source = "description"
+                        print(f"✅ 영상 설명으로 대체 ({len(description)} 글자)")
+                        return description
                     return ""
                 
                 print(f"✅ 선택된 자막: {language_used}")
@@ -80,14 +101,28 @@ class SubtitleExtractor:
                 with urllib.request.urlopen(subtitle_url) as response:
                     subtitle_content = response.read().decode('utf-8')
                 
+                # 다운로드한 자막 내용 확인
+                if not subtitle_content or len(subtitle_content) < 10:
+                    print(f"❌ 자막 내용이 너무 짧습니다: {len(subtitle_content)} 글자")
+                    return ""
+                
                 # VTT/SRT 형식을 일반 텍스트로 변환
                 clean_text = self._clean_subtitle_text(subtitle_content)
                 
-                print("📄 자막 추출 완료")
+                # 결과 확인
+                if not clean_text or len(clean_text) < 10:
+                    print(f"❌ 정제된 자막이 너무 짧습니다: {len(clean_text)} 글자")
+                    # 원본 내용 디버깅 출력
+                    print(f"원본 자막 미리보기: {subtitle_content[:200]}...")
+                    return ""
+                
+                print(f"📄 자막 추출 완료: {len(clean_text)} 글자")
                 return clean_text
                 
         except Exception as e:
             print(f"❌ yt-dlp 자막 추출 오류: {e}")
+            import traceback
+            traceback.print_exc()  # 스택 트레이스 출력
             return ""
 
     def _clean_subtitle_text(self, subtitle_content: str) -> str:
@@ -98,6 +133,9 @@ class SubtitleExtractor:
         lines = subtitle_content.split('\n')
         text_lines = []
         
+        # 디버깅: 원본 라인 수 출력
+        print(f"🔍 원본 자막 라인 수: {len(lines)}")
+        
         for line in lines:
             line = line.strip()
             # VTT 헤더나 시간 정보 스킵
@@ -105,7 +143,9 @@ class SubtitleExtractor:
                 '-->' in line or 
                 line.isdigit() or 
                 line == '' or
-                line.startswith('NOTE')):
+                line.startswith('NOTE') or
+                line.startswith('Kind:') or
+                line.startswith('Language:')):
                 continue
             
             # HTML 태그 제거 (예: <c.colorE5E5E5>)
@@ -115,10 +155,28 @@ class SubtitleExtractor:
             if line:
                 text_lines.append(line)
         
+        # 디버깅: 정제 후 라인 수 출력
+        print(f"🔍 정제 후 자막 라인 수: {len(text_lines)}")
+        
         # 🔥 중복 제거: 연속된 동일한 라인 제거
         deduplicated_lines = self._remove_consecutive_duplicates(text_lines)
         
-        return '\n'.join(deduplicated_lines)
+        # 디버깅: 중복 제거 후 라인 수 출력
+        print(f"🔍 중복 제거 후 자막 라인 수: {len(deduplicated_lines)}")
+        
+        # 결과 확인
+        result = '\n'.join(deduplicated_lines)
+        if not result:
+            # 원본에서 일부만 샘플로 추출
+            fallback_text = []
+            for line in lines:
+                if line and not line.startswith('WEBVTT') and '-->' not in line and not line.isdigit():
+                    fallback_text.append(line.strip())
+            if fallback_text:
+                print("⚠️ 정제 결과가 비어있어 원본에서 일부 추출합니다.")
+                return '\n'.join(fallback_text[:100])  # 최대 100줄만 사용
+            
+        return result
     
     def _remove_consecutive_duplicates(self, lines: list) -> list:
         """
@@ -129,6 +187,10 @@ class SubtitleExtractor:
         if not lines or not self.remove_duplicates:
             return lines
         
+        # 입력 라인이 없으면 그대로 반환
+        if not lines:
+            return lines
+            
         result = [lines[0]]  # 첫 번째 라인은 항상 포함
         removed_count = 0
         
@@ -194,48 +256,3 @@ class SubtitleExtractor:
         except Exception as e:
             print(f"❌ 자막 정보 조회 오류: {e}")
             return {}
-
-
-# 🧪 테스트 실행
-if __name__ == "__main__":
-    test_url = "https://www.youtube.com/watch?v=5MgBikgcWnY"
-    
-    # 🔥 중복 제거 옵션을 조정할 수 있습니다:
-    # remove_duplicates=True: 중복 제거 활성화
-    # similarity_threshold=1.0: 완전 일치만 중복으로 판단 (기본값)
-    # similarity_threshold=0.8: 80% 이상 유사하면 중복으로 판단
-    extractor = SubtitleExtractor(
-        remove_duplicates=True,
-        similarity_threshold=1.0  # 완전 일치만 중복 제거
-    )
-    
-    # 사용 가능한 자막 확인
-    print("=" * 50)
-    print("📋 사용 가능한 자막 확인")
-    print("=" * 50)
-    subtitle_info = extractor.get_available_subtitles(test_url)
-    print(f"비디오 제목: {subtitle_info.get('title', 'Unknown')}")
-    print(f"수동 자막: {subtitle_info.get('manual_subtitles', [])}")
-    print(f"자동 자막: {subtitle_info.get('automatic_captions', [])}")
-    
-    # 자막 추출
-    print("\n" + "=" * 50)
-    print("📄 자막 추출 (중복 제거 포함)")
-    print("=" * 50)
-    subtitle_text = extractor.extract_subtitle_text(test_url)
-
-    if subtitle_text:
-        print(f"\n📋 자막 미리보기 ({len(subtitle_text)} 글자):")
-        print("-" * 30)
-        print(subtitle_text[:500] + "..." if len(subtitle_text) > 500 else subtitle_text)
-        
-        # 중복 제거 효과 확인
-        lines = subtitle_text.split('\n')
-        unique_lines = len(set(lines))
-        total_lines = len([line for line in lines if line.strip()])
-        print(f"\n📊 중복 제거 결과:")
-        print(f"   전체 라인: {total_lines}")
-        print(f"   고유 라인: {unique_lines}")
-        print(f"   중복 비율: {(total_lines-unique_lines)/total_lines*100:.1f}%" if total_lines > 0 else "   중복 비율: 0%")
-    else:
-        print("❌ 자막 추출 실패")
