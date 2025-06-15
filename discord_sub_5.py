@@ -155,6 +155,9 @@ class NotionSaver:
         # 자막 소스 설명
         source_desc = self.source_descriptions.get(transcript_source, "알 수 없는 소스")
         
+        # 현재 시간을 ISO 8601 형식으로 생성
+        current_time = datetime.now().isoformat() + "Z"  # UTC 시간으로 설정
+        
         # 페이지 속성 구성 (실제 노션 데이터베이스 속성명에 맞춤)
         properties = {
             "Title": {  # 노션에서는 영어로 Title
@@ -191,6 +194,11 @@ class NotionSaver:
                         }
                     }
                 ]
+            },
+            "Created": {  # 생성일 속성
+                "date": {
+                    "start": current_time
+                }
             }
         }
         
