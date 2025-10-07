@@ -26,16 +26,16 @@ class GeminiSummarizer:
             if preferred_model:
                 model_candidates.append(preferred_model)
 
-            # 🔥 가장 안정적인 모델명 우선 시도 (하위 호환성 중시)
+            # 🔥 최신 Gemini 모델명으로 시도 (2025년 10월 기준)
             model_candidates.extend([
-                'gemini-pro',  # 가장 안정적
+                'gemini-2.5-flash',      # 최신 빠른 모델
+                'gemini-2.0-flash',      # 안정적인 빠른 모델
+                'gemini-2.5-pro',        # 최신 프로 모델
+                'gemini-flash-latest',   # 최신 Flash 모델
+                'gemini-pro-latest',     # 최신 Pro 모델
+                'gemini-pro',            # 하위 호환성
                 'gemini-1.5-flash',
                 'gemini-1.5-pro',
-                'models/gemini-1.5-flash-latest',
-                'models/gemini-1.5-flash',
-                'models/gemini-1.5-pro-latest',
-                'models/gemini-1.5-pro',
-                'models/gemini-pro',
                 'gemini-1.0-pro',
                 'models/gemini-1.0-pro'
             ])
