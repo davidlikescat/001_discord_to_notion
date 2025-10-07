@@ -26,18 +26,18 @@ class GeminiSummarizer:
             if preferred_model:
                 model_candidates.append(preferred_model)
 
-            # 🔥 Google Generative AI 최신 모델명(접두사 포함) 우선 시도
+            # 🔥 가장 안정적인 모델명 우선 시도 (하위 호환성 중시)
             model_candidates.extend([
+                'gemini-pro',  # 가장 안정적
+                'gemini-1.5-flash',
+                'gemini-1.5-pro',
                 'models/gemini-1.5-flash-latest',
                 'models/gemini-1.5-flash',
                 'models/gemini-1.5-pro-latest',
                 'models/gemini-1.5-pro',
-                'models/gemini-1.0-pro',
-                # 하위 호환을 위해 구버전 명칭도 시도
-                'gemini-1.5-flash',
-                'gemini-1.5-pro',
-                'gemini-pro',
-                'gemini-1.0-pro'
+                'models/gemini-pro',
+                'gemini-1.0-pro',
+                'models/gemini-1.0-pro'
             ])
 
             self.model = None
