@@ -474,7 +474,13 @@ async def on_message(message):
     if message.author == client.user:
         print("🤖 봇 자신의 메시지이므로 무시")
         return
-    
+
+    # 🚫 11번 채널(Success Logic) 차단
+    BLOCKED_CHANNEL_ID = 1425020218182467665
+    if message.channel.id == BLOCKED_CHANNEL_ID:
+        print(f"🚫 차단된 채널 (11-success-logic), 무시")
+        return
+
     print(f"✅ 사용자 메시지 처리 중...")
     
     try:
