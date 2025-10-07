@@ -371,8 +371,8 @@ class DiscordWorkflowManager:
             # 오류 발생시 간단한 텍스트 메시지로 대체
             await processing_msg.edit(content=f"✅ 요약 완료! 노션 페이지: {notion_url}")
 
-# 워크플로우 매니저 인스턴스
-workflow_manager = DiscordWorkflowManager()
+# 워크플로우 매니저 (환경 설정 이후에 초기화)
+workflow_manager = None
 
 def extract_all_text_from_message(message):
     """메시지에서 모든 텍스트 추출 (content + embeds + attachments)"""
@@ -485,6 +485,10 @@ async def on_message(message):
             print("❌ 추출된 텍스트가 없음")
             return
         
+        if workflow_manager is None:
+            print("❌ 워크플로우 매니저가 아직 초기화되지 않았습니다.")
+            return
+
         # Step 1: 유튜브 링크 감지 (숏츠 포함)
         youtube_urls = workflow_manager.youtube_detector.detect_youtube_urls(all_text)
         
@@ -548,7 +552,10 @@ if __name__ == "__main__":
     if not check_environment():
         print("❌ 환경 설정을 완료한 후 다시 실행해주세요.")
         exit(1)
-    
+
+    # 워크플로우 매니저를 환경 설정 이후에 초기화
+    workflow_manager = DiscordWorkflowManager()
+
     # Discord 토큰 확인 (GCP에서 읽기)
     DISCORD_TOKEN = get_secret_from_gcp('DISCORD_BOT_TOKEN')
     if not DISCORD_TOKEN:

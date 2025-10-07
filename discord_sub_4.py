@@ -20,28 +20,52 @@ class GeminiSummarizer:
         
         try:
             genai.configure(api_key=self.api_key)
-            
-            # 🔥 최신 Gemini 모델명으로 시도
-            model_names = [
-                'gemini-1.5-flash',      # 최신 빠른 모델
-                'gemini-1.5-pro',        # 최신 프로 모델  
-                'gemini-pro',            # 구 버전 (호환성)
-                'gemini-1.0-pro'         # 다른 버전
-            ]
-            
+
+            preferred_model = os.getenv('GEMINI_MODEL_NAME')
+            model_candidates = []
+            if preferred_model:
+                model_candidates.append(preferred_model)
+
+            # 🔥 Google Generative AI 최신 모델명(접두사 포함) 우선 시도
+            model_candidates.extend([
+                'models/gemini-1.5-flash-latest',
+                'models/gemini-1.5-flash',
+                'models/gemini-1.5-pro-latest',
+                'models/gemini-1.5-pro',
+                'models/gemini-1.0-pro',
+                # 하위 호환을 위해 구버전 명칭도 시도
+                'gemini-1.5-flash',
+                'gemini-1.5-pro',
+                'gemini-pro',
+                'gemini-1.0-pro'
+            ])
+
             self.model = None
-            for model_name in model_names:
+            tried_models = []
+
+            for model_name in model_candidates:
+                if model_name in tried_models:
+                    continue
+                tried_models.append(model_name)
+
                 try:
-                    self.model = genai.GenerativeModel(model_name)
+                    self.model = genai.GenerativeModel(model_name=model_name)
                     print(f"🤖 GeminiSummarizer 초기화 완료 (모델: {model_name})")
                     break
                 except Exception as model_error:
                     print(f"   ⚠️ {model_name} 모델 시도 실패: {model_error}")
                     continue
-            
+
             if not self.model:
-                print("❌ 모든 Gemini 모델 초기화 실패")
-                
+                print("❌ 모든 Gemini 모델 초기화 실패. 사용 가능한 모델 목록을 확인하세요.")
+                try:
+                    available = genai.list_models()
+                    supported = [m.name for m in available if hasattr(m, 'supported_generation_methods') and 'generateContent' in m.supported_generation_methods]
+                    if supported:
+                        print(f"   🔎 generateContent 지원 모델: {supported}")
+                except Exception as listing_error:
+                    print(f"   ⚠️ 모델 목록 조회 실패: {listing_error}")
+
         except Exception as e:
             print(f"❌ Gemini API 초기화 실패: {e}")
             self.model = None
