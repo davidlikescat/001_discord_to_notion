@@ -173,12 +173,21 @@ class DiscordWorkflowManager:
 
             # Step 1: 초기 메시지
             processing_msg = await message.channel.send(
-                f"🎬 영상을 분석 중입니다... `{video_id}`\n"
-                f"📍 채널: {channel_name}"
+                f"🎬 **영상 분석 시작!**\n"
+                f"📍 채널: {channel_name}\n"
+                f"🆔 Video ID: `{video_id}`\n\n"
+                f"**진행 상황:**\n"
+                f"🔵⚪⚪⚪⚪ **Step 1/5**: 초기화 중..."
             )
 
             # Step 2: 영상 정보 추출
-            await processing_msg.edit(content="📊 영상 정보를 수집하고 있습니다...")
+            await processing_msg.edit(
+                content=f"🎬 **영상 분석 진행 중**\n"
+                        f"📍 채널: {channel_name}\n\n"
+                        f"**진행 상황:**\n"
+                        f"🔵🔵⚪⚪⚪ **Step 2/5**: 영상 정보 수집 중...\n"
+                        f"⏱️ YouTube API 호출 중..."
+            )
             video_info = await self._run_step_2(video_id, processing_msg)
             if not video_info:
                 return False
@@ -187,7 +196,14 @@ class DiscordWorkflowManager:
             video_info['url'] = video_url
 
             # Step 3: 자막 추출
-            await processing_msg.edit(content="📝 자막을 추출하고 있습니다...")
+            await processing_msg.edit(
+                content=f"🎬 **영상 분석 진행 중**\n"
+                        f"📺 제목: {video_info['title'][:50]}...\n"
+                        f"⏱️ 길이: {video_info['duration']}\n\n"
+                        f"**진행 상황:**\n"
+                        f"🔵🔵🔵⚪⚪ **Step 3/5**: 자막 추출 중...\n"
+                        f"🔍 youtube-transcript-api 시도 중..."
+            )
             transcript, transcript_source = await self._run_step_3(
                 video_url, video_id, video_info, processing_msg
             )
@@ -198,7 +214,12 @@ class DiscordWorkflowManager:
 
             # Step 4: AI 요약
             await processing_msg.edit(
-                content=f"🤖 AI가 영상을 분석하고 있습니다...\n"
+                content=f"🎬 **영상 분석 진행 중**\n"
+                        f"📺 제목: {video_info['title'][:50]}...\n"
+                        f"📝 자막: {len(transcript):,} 글자 추출 완료 ✅\n\n"
+                        f"**진행 상황:**\n"
+                        f"🔵🔵🔵🔵⚪ **Step 4/5**: AI 요약 생성 중...\n"
+                        f"🤖 Claude AI 분석 중... (1-2분 소요)\n"
                         f"💡 프롬프트: {channel_config.get('system_prompt_key', 'default')}"
             )
             summary = await self._run_step_4(
@@ -208,7 +229,15 @@ class DiscordWorkflowManager:
                 return False
 
             # Step 5: Notion 저장
-            await processing_msg.edit(content="💾 Notion에 저장하고 있습니다...")
+            await processing_msg.edit(
+                content=f"🎬 **영상 분석 거의 완료!**\n"
+                        f"📺 제목: {video_info['title'][:50]}...\n"
+                        f"📝 자막: {len(transcript):,} 글자 ✅\n"
+                        f"🤖 AI 요약: {len(summary):,} 글자 ✅\n\n"
+                        f"**진행 상황:**\n"
+                        f"🔵🔵🔵🔵🔵 **Step 5/5**: Notion 저장 중...\n"
+                        f"💾 데이터베이스에 업로드 중..."
+            )
             discord_info = {
                 'channel': message.channel.name,
                 'author': message.author.display_name
@@ -273,14 +302,13 @@ class DiscordWorkflowManager:
                 print(f"✅ Step 3 성공: {len(transcript)} 글자 ({source})")
                 return transcript, source
             else:
-                # 영상 설명으로 대체
-                description = video_info.get('description', '')
-                if description and len(description) > 100:
-                    print(f"ℹ️ 영상 설명 사용: {len(description)} 글자")
-                    return description, "description"
-                else:
-                    print("❌ Step 3 실패: 자막 및 설명 없음")
-                    return None, None
+                # 자막이 없으면 실패 처리 (영상 설명은 사용하지 않음)
+                print(f"❌ Step 3 실패: 자막을 찾을 수 없습니다 (source: {source})")
+                await processing_msg.edit(
+                    content="❌ 자막을 찾을 수 없습니다.\n"
+                            "💡 자막이 있는 영상만 처리할 수 있습니다."
+                )
+                return None, None
 
         except Exception as e:
             print(f"❌ Step 3 오류: {e}")

@@ -62,8 +62,8 @@ class SubtitleExtractor:
             if transcript:
                 return transcript, source
 
-            # 3순위: 영상 설명 사용
-            print("⚠️ 모든 자막 추출 방법 실패. 영상 설명을 사용합니다.")
+            # 자막을 찾을 수 없으면 실패 처리
+            print("❌ 모든 자막 추출 방법 실패. 자막이 없는 영상입니다.")
             return "", "no_subtitle"
 
         except Exception as e:
@@ -98,8 +98,13 @@ class SubtitleExtractor:
         try:
             print("🔄 youtube-transcript-api로 자막 추출 시도...")
 
-            # 사용 가능한 자막 목록 가져오기
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            # 구 API / 신 API 호환성 체크
+            if hasattr(YouTubeTranscriptApi, 'list_transcripts'):
+                # 신 API (list_transcripts 사용)
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            else:
+                # 구 API (get_transcript 직접 사용)
+                return self._try_youtube_transcript_api_legacy(video_id)
 
             # 1. 한국어 수동 자막 우선
             try:
@@ -165,6 +170,52 @@ class SubtitleExtractor:
             print(f"❌ youtube-transcript-api 오류: {e}")
             return "", ""
 
+    def _try_youtube_transcript_api_legacy(self, video_id: str) -> Tuple[str, str]:
+        """구 버전 youtube-transcript-api로 자막 추출 (fetch 메서드 사용)"""
+        try:
+            print("   📌 구 API 사용 (fetch 메서드)")
+
+            api = YouTubeTranscriptApi()
+
+            # 1. 한국어 자막 시도
+            try:
+                result = api.fetch(video_id, languages=['ko'])
+                if hasattr(result, 'snippets') and result.snippets:
+                    # snippets를 dict 형식으로 변환
+                    transcript_data = [{'text': s.text, 'start': s.start, 'duration': s.duration}
+                                      for s in result.snippets]
+                    text = self._format_transcript(transcript_data)
+                    if text:
+                        print(f"✅ 한국어 자막 추출 성공: {len(text)} 글자")
+                        return text, "youtube_transcript_api_ko"
+            except Exception as e:
+                print(f"   ⚠️ 한국어 자막 실패: {e}")
+                pass
+
+            # 2. 영어 자막 시도
+            try:
+                result = api.fetch(video_id, languages=['en'])
+                if hasattr(result, 'snippets') and result.snippets:
+                    # snippets를 dict 형식으로 변환
+                    transcript_data = [{'text': s.text, 'start': s.start, 'duration': s.duration}
+                                      for s in result.snippets]
+                    text = self._format_transcript(transcript_data)
+                    if text:
+                        print(f"✅ 영어 자막 추출 성공: {len(text)} 글자")
+                        return text, "youtube_transcript_api_en"
+            except Exception as e:
+                print(f"   ⚠️ 영어 자막 실패: {e}")
+                pass
+
+            print("❌ youtube-transcript-api: 사용 가능한 자막 없음")
+            return "", ""
+
+        except Exception as e:
+            print(f"❌ youtube-transcript-api legacy 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            return "", ""
+
     def _format_transcript(self, transcript_data: list) -> str:
         """
         youtube-transcript-api의 transcript 데이터를 텍스트로 변환
@@ -204,7 +255,18 @@ class SubtitleExtractor:
                 'subtitlesformat': 'vtt',
                 'skip_download': True,
                 'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
+                'quiet': True,
+                'no_warnings': True,
             }
+
+            # Chrome 브라우저 쿠키 사용 시도 (로컬 환경)
+            try:
+                ydl_opts['cookiesfrombrowser'] = ('chrome',)
+                print("   🍪 Chrome 쿠키 사용")
+            except:
+                # GCP VM 등 Chrome이 없는 환경에서는 쿠키 없이 시도
+                print("   ⚠️ Chrome 쿠키를 사용할 수 없습니다")
+                pass
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(youtube_url, download=False)
