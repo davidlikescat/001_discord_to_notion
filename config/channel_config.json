@@ -1,0 +1,39 @@
+{
+  "channels": {
+    "01-archive": {
+      "channel_name": "01-archive",
+      "channel_id": 960907092439478374,
+      "system_prompt_key": "archive",
+      "subtitle_priority": ["youtube_transcript_api", "yt_dlp"],
+      "notion_database_id": "290b592202868160becbe90aeaf8dfeb",
+      "notion_database_view_id": "290b592202868177b296000c43240e2b",
+      "ai_model": "claude-3-7-sonnet-20250219",
+      "max_output_lines": 1000,
+      "description": "텍스트 정제 및 아카이브 채널 - 1000줄 이내 정리"
+    },
+    "02-agent-reference": {
+      "channel_name": "02-agent-reference",
+      "channel_id": 1432206876635824148,
+      "system_prompt_key": "agent_references",
+      "subtitle_priority": ["youtube_transcript_api", "yt_dlp"],
+      "notion_database_id": "28ab59220286804c8b6fe9950825fb86",
+      "notion_database_view_id": "28ab592202868007a908000c0ba8b2e0",
+      "ai_model": "claude-3-7-sonnet-20250219",
+      "max_output_lines": 1000,
+      "description": "AI 에이전트 참고자료 채널 - Feed view 형식"
+    }
+  },
+  "blocked_channels": [
+    1425020218182467665
+  ],
+  "fallback_config": {
+    "ai_model_fallback": "claude-3-haiku-20240307",
+    "subtitle_fallback": "description"
+  },
+  "notes": {
+    "channel_id": "Discord에서 채널 생성 후 실제 채널 ID로 업데이트 필요",
+    "ai_model": "claude-3-7-sonnet-20250219 (유료) 또는 claude-3-haiku-20240307 (무료)",
+    "notion_database_id": "Notion URL에서 추출한 32자리 ID",
+    "max_output_lines": "AI 요약 최대 줄 수 제한"
+  }
+}
