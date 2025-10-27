@@ -79,7 +79,17 @@ class NotionSaver:
                 discord_info
             )
 
-            # 노션 API 호출
+            # 블록 수 확인
+            children = page_data.get('children', [])
+            total_blocks = len(children)
+            print(f"   총 블록 수: {total_blocks}개")
+
+            # 100개 블록 제한 처리
+            if total_blocks > 100:
+                print(f"   ⚠️ 블록이 100개를 초과합니다. 청크로 분할합니다.")
+                return await self._save_with_chunking(page_data, headers, children)
+
+            # 100개 이하면 한 번에 저장
             response = requests.post(
                 'https://api.notion.com/v1/pages',
                 headers=headers,
@@ -101,6 +111,64 @@ class NotionSaver:
 
         except Exception as e:
             print(f"❌ NotionSaver 오류: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    async def _save_with_chunking(self, page_data: Dict, headers: Dict, children: list) -> Optional[str]:
+        """100개 이상의 블록을 청크로 분할해서 저장"""
+        try:
+            # 1단계: 첫 100개 블록으로 페이지 생성
+            first_chunk = children[:100]
+            page_data['children'] = first_chunk
+
+            print(f"   📝 1차 저장: {len(first_chunk)}개 블록")
+            response = requests.post(
+                'https://api.notion.com/v1/pages',
+                headers=headers,
+                data=json.dumps(page_data)
+            )
+
+            if response.status_code != 200:
+                print(f"❌ 1차 저장 실패: {response.status_code}")
+                print(f"   응답: {response.text}")
+                return None
+
+            notion_page = response.json()
+            page_id = notion_page.get('id', '')
+            page_url = notion_page.get('url', '')
+
+            # 2단계: 나머지 블록들을 100개씩 추가
+            remaining_children = children[100:]
+            chunk_num = 2
+
+            while remaining_children:
+                chunk = remaining_children[:100]
+                remaining_children = remaining_children[100:]
+
+                print(f"   📝 {chunk_num}차 추가: {len(chunk)}개 블록")
+
+                append_response = requests.patch(
+                    f'https://api.notion.com/v1/blocks/{page_id}/children',
+                    headers=headers,
+                    data=json.dumps({"children": chunk})
+                )
+
+                if append_response.status_code != 200:
+                    print(f"⚠️ {chunk_num}차 추가 실패: {append_response.status_code}")
+                    print(f"   응답: {append_response.text}")
+                    # 실패해도 페이지는 생성되었으므로 URL 반환
+                    break
+
+                chunk_num += 1
+
+            print(f"✅ Notion 저장 성공 (총 {chunk_num-1}개 청크)")
+            print(f"   페이지 URL: {page_url}")
+
+            return page_url
+
+        except Exception as e:
+            print(f"❌ 청크 저장 오류: {e}")
             import traceback
             traceback.print_exc()
             return None
