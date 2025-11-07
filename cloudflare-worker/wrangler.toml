@@ -1,0 +1,11 @@
+name = "youtube-summarizer-bot"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Environment variables (non-secret)
+[vars]
+SUPABASE_URL = "https://your-project.supabase.co"
+
+# Secrets (설정 방법: npx wrangler secret put SECRET_NAME)
+# - TELEGRAM_BOT_TOKEN
+# - SUPABASE_SERVICE_KEY
